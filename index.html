@@ -138,6 +138,14 @@
   .status.error { color: #ff6b6b; }
   .status.heard { color: #80e0ff; }
 
+  .debug {
+    color: rgba(140,130,170,.4);
+    font-size: .7rem;
+    min-height: 1.2em;
+    margin-bottom: .5rem;
+    font-family: monospace;
+  }
+
   /* テキスト入力フォールバック */
   .text-fallback {
     margin-top: .5rem;
@@ -257,6 +265,7 @@
   </div>
 
   <p class="status" id="status"></p>
+  <p class="debug" id="debug"></p>
 
   <div class="text-fallback">
     <details>
@@ -297,66 +306,53 @@
 // ===== 正解の呪文 =====
 const SPELL = 'ルキウゲルキウゲロフォカーレ';
 
-// 正規化: カタカナ→ひらがな、スペース除去、小書き統一、漢字・記号除去
-function normalize(str) {
-  return str
-    .replace(/[\s　]/g, '')
-    // 漢字・記号・句読点を除去（ひらがな・カタカナ・長音符のみ残す）
-    .replace(/[^぀-ゟ゠-ヿー]/g, '')
-    .replace(/[ァ-ヶ]/g, m => String.fromCharCode(m.charCodeAt(0) - 0x60))
-    .replace(/[ぁぃぅぇぉっゃゅょ]/g, m => {
-      const map = { 'ぁ':'あ','ぃ':'い','ぅ':'う','ぇ':'え','ぉ':'お','っ':'つ','ゃ':'や','ゅ':'ゆ','ょ':'よ' };
-      return map[m] || m;
-    })
-    .toLowerCase();
-}
-
-// レーベンシュタイン距離（編集距離）
-function levenshtein(a, b) {
-  const m = a.length, n = b.length;
-  const dp = Array.from({length: m + 1}, () => Array(n + 1).fill(0));
-  for (let i = 0; i <= m; i++) dp[i][0] = i;
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      dp[i][j] = Math.min(
-        dp[i-1][j] + 1,
-        dp[i][j-1] + 1,
-        dp[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1)
-      );
-    }
-  }
-  return dp[m][n];
-}
-
-// 音の類似グループ（混同しやすい音を同一視）
-function phonNormalize(str) {
-  return str
-    .replace(/[おう]$/g, 'お')  // 語末の長音
-    .replace(/ー/g, '')          // 長音符除去
-    .replace(/[づず]/g, 'ず')
-    .replace(/[ぢじ]/g, 'じ')
-    .replace(/[をお]/g, 'お')
-    .replace(/[はわ]/g, 'わ')    // 助詞的混同
-    .replace(/ふぉ/g, 'ほ')      // フォ→ホ混同対策
-    .replace(/う゛/g, 'ぶ');
-}
-
-const SPELL_NORM = normalize(SPELL);
-const SPELL_PHON = phonNormalize(SPELL_NORM);
-const THRESHOLD = 0.55; // 類似度55%以上でOK
+// キーフレーズ: これらのうち一定数含まれていれば成功
+// 音声認識が漢字変換しても引っかかるよう、音の断片で判定
+const KEY_SOUNDS = [
+  /[るルル][きキキ]/,          // ルキ
+  /[うウウ][げゲゲ]/,          // ウゲ
+  /[ろロロ][ふフフほホホ][ぉォォおオオ]?/, // ロフォ / ロホ
+  /[かカカ][ーあアア]?[れレレ]/, // カーレ / カレ
+  /[りリリ][きキキ]/,          // リキ（ルキの誤認識）
+  /[げゲゲ][ろロロ]/,          // ゲロ（ウゲロの一部）
+  /力[うウウ]/,               // 漢字「力」+う
+  /陸/,                       // ルキ→陸
+  /呂/,                       // ロ→呂
+];
+// 認識されそうな漢字混じりパターン
+const ALT_PATTERNS = [
+  /力.{0,2}げ.{0,4}力.{0,2}げ/i,    // 力うげ力うげ
+  /[るリりルルリ].{0,2}[げゲゲ].{0,4}[るリりルルリ].{0,2}[げゲゲ]/,  // Xげ...Xげ の繰り返し構造
+  /[ろロロ呂].{0,2}[ふフフほホホ].{0,3}[かカカ].{0,2}[れレレ]/,     // ロフォカーレ部分
+];
 
 function checkSpell(input) {
-  const inputNorm = normalize(input);
-  // 完全一致
-  if (inputNorm === SPELL_NORM) return true;
-  // 音韻正規化後の編集距離で類似度判定
-  const inputPhon = phonNormalize(inputNorm);
-  const maxLen = Math.max(SPELL_PHON.length, inputPhon.length);
-  if (maxLen === 0) return false;
-  const dist = levenshtein(SPELL_PHON, inputPhon);
-  const similarity = 1 - dist / maxLen;
-  return similarity >= THRESHOLD;
+  const raw = input.replace(/[\s　。、.,!！?？]/g, '');
+
+  // キーフレーズいくつ一致するか数える
+  let keyHits = 0;
+  for (const re of KEY_SOUNDS) {
+    if (re.test(raw)) keyHits++;
+  }
+
+  // 代替パターンいくつ一致するか
+  let altHits = 0;
+  for (const re of ALT_PATTERNS) {
+    if (re.test(raw)) altHits++;
+  }
+
+  // デバッグ表示（画面下部に小さく）
+  const debugEl = document.getElementById('debug');
+  if (debugEl) {
+    debugEl.textContent = `[認識: "${raw}" / キー: ${keyHits}/9 / パターン: ${altHits}/3]`;
+  }
+
+  // 判定: キーフレーズ3つ以上 OR 代替パターン2つ以上 OR (キー2つ+代替1つ)
+  if (keyHits >= 3) return true;
+  if (altHits >= 2) return true;
+  if (keyHits >= 2 && altHits >= 1) return true;
+
+  return false;
 }
 
 // ===== UI =====
