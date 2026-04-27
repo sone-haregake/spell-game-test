@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>呪文を唱えろ！</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    min-height: 100dvh;
+    background: #0a0a1a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Hiragino Sans', 'Yu Gothic', sans-serif;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* 背景パーティクル */
+  .bg-particles {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .bg-particles span {
+    position: absolute;
+    width: 2px; height: 2px;
+    background: rgba(140, 120, 255, .4);
+    border-radius: 50%;
+    animation: float-up linear infinite;
+  }
+  @keyframes float-up {
+    0%   { transform: translateY(0) scale(1); opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
+    100% { transform: translateY(-100vh) scale(0); opacity: 0; }
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    padding: 2rem 1.5rem;
+    width: 100%;
+    max-width: 420px;
+  }
+
+  h1 {
+    color: #e0d0ff;
+    font-size: 1.8rem;
+    text-shadow: 0 0 20px rgba(160, 120, 255, .6);
+    margin-bottom: .4rem;
+    letter-spacing: .1em;
+  }
+  .subtitle {
+    color: rgba(180, 160, 220, .7);
+    font-size: .85rem;
+    margin-bottom: 2.5rem;
+  }
+
+  /* 呪文ボタン */
+  .spell-btn {
+    position: relative;
+    width: 180px; height: 180px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    background: radial-gradient(circle at 40% 35%, #6a3de8, #2a1060 70%);
+    box-shadow:
+      0 0 30px rgba(120, 80, 255, .4),
+      0 0 60px rgba(120, 80, 255, .2),
+      inset 0 0 30px rgba(200, 180, 255, .15);
+    color: #e0d0ff;
+    font-size: 1.1rem;
+    font-weight: bold;
+    letter-spacing: .15em;
+    transition: transform .2s, box-shadow .3s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .spell-btn:active {
+    transform: scale(.95);
+  }
+  .spell-btn.listening {
+    animation: pulse-glow 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 30px rgba(120,80,255,.5), 0 0 60px rgba(120,80,255,.25); }
+    50%      { box-shadow: 0 0 50px rgba(120,80,255,.8), 0 0 100px rgba(120,80,255,.4); }
+  }
+
+  .spell-btn .icon {
+    font-size: 2.5rem;
+    display: block;
+    margin-bottom: .3rem;
+  }
+
+  /* 魔法陣リング */
+  .magic-circle {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 220px; height: 220px;
+    margin: -110px 0 0 -110px;
+    border: 2px solid rgba(160,120,255,.3);
+    border-radius: 50%;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .4s;
+  }
+  .spell-btn.listening ~ .magic-circle,
+  .spell-btn.listening .magic-circle { /* fallback */ }
+  .btn-wrap.listening .magic-circle {
+    opacity: 1;
+    animation: spin 4s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .magic-circle::before, .magic-circle::after {
+    content: ''; position: absolute; inset: -12px;
+    border: 1px solid rgba(160,120,255,.2);
+    border-radius: 50%;
+  }
+  .magic-circle::after { inset: -24px; border-style: dashed; }
+
+  .btn-wrap {
+    position: relative;
+    display: inline-block;
+    margin-bottom: 2rem;
+  }
+
+  /* ステータステキスト */
+  .status {
+    color: rgba(180, 160, 220, .8);
+    font-size: .9rem;
+    min-height: 1.4em;
+    margin-bottom: 1.2rem;
+    transition: color .3s;
+  }
+  .status.error { color: #ff6b6b; }
+  .status.heard { color: #80e0ff; }
+
+  /* テキスト入力フォールバック */
+  .text-fallback {
+    margin-top: .5rem;
+  }
+  .text-fallback summary {
+    color: rgba(180,160,220,.5);
+    font-size: .8rem;
+    cursor: pointer;
+    margin-bottom: .8rem;
+  }
+  .text-input-wrap {
+    display: flex;
+    gap: .5rem;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .text-input-wrap input {
+    flex: 1;
+    min-width: 0;
+    max-width: 240px;
+    padding: .6rem 1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(160,120,255,.3);
+    background: rgba(20,15,40,.8);
+    color: #e0d0ff;
+    font-size: .95rem;
+    outline: none;
+    transition: border-color .3s;
+  }
+  .text-input-wrap input:focus {
+    border-color: rgba(160,120,255,.7);
+  }
+  .text-input-wrap button {
+    padding: .6rem 1.2rem;
+    border-radius: 999px;
+    border: 1px solid rgba(160,120,255,.4);
+    background: rgba(100,60,220,.3);
+    color: #d0c0ff;
+    font-size: .9rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  /* 成功オーバーレイ */
+  .success-overlay {
+    position: fixed; inset: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(5, 5, 20, .85);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .6s;
+  }
+  .success-overlay.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .success-text {
+    font-size: 3.5rem;
+    font-weight: bold;
+    color: #fff;
+    text-shadow:
+      0 0 40px rgba(120,200,255,.8),
+      0 0 80px rgba(100,140,255,.5);
+    animation: success-pop .6s ease-out both;
+    letter-spacing: .2em;
+  }
+  @keyframes success-pop {
+    0%   { transform: scale(0); opacity: 0; }
+    60%  { transform: scale(1.2); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .success-sub {
+    color: rgba(180,200,255,.7);
+    margin-top: 1rem;
+    font-size: 1rem;
+  }
+  .retry-btn {
+    margin-top: 2rem;
+    padding: .7rem 2rem;
+    border-radius: 999px;
+    border: 1px solid rgba(160,120,255,.4);
+    background: rgba(100,60,220,.3);
+    color: #d0c0ff;
+    font-size: 1rem;
+    cursor: pointer;
+  }
+
+  /* エフェクトキャンバス */
+  #fx-canvas {
+    position: fixed; inset: 0;
+    z-index: 50;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<!-- 背景パーティクル -->
+<div class="bg-particles" id="bgParticles"></div>
+
+<!-- メイン -->
+<div class="container">
+  <h1>呪文を唱えろ！</h1>
+  <p class="subtitle">ボタンを押して呪文を唱えよ</p>
+
+  <div class="btn-wrap" id="btnWrap">
+    <button class="spell-btn" id="spellBtn">
+      <span class="icon">✦</span>
+      詠唱開始
+    </button>
+    <div class="magic-circle"></div>
+  </div>
+
+  <p class="status" id="status"></p>
+
+  <div class="text-fallback">
+    <details>
+      <summary>音声が使えない場合はこちら</summary>
+      <div class="text-input-wrap">
+        <input type="text" id="textInput" placeholder="呪文を入力…" autocomplete="off">
+        <button id="textSubmit">詠唱</button>
+      </div>
+    </details>
+  </div>
+</div>
+
+<!-- 成功オーバーレイ -->
+<div class="success-overlay" id="successOverlay">
+  <div class="success-text">成 功</div>
+  <p class="success-sub">呪文は正しく唱えられた</p>
+  <button class="retry-btn" id="retryBtn">もう一度</button>
+</div>
+
+<!-- エフェクトキャンバス -->
+<canvas id="fx-canvas"></canvas>
+
+<script>
+// ===== 背景パーティクル =====
+(function initBgParticles() {
+  const c = document.getElementById('bgParticles');
+  for (let i = 0; i < 30; i++) {
+    const s = document.createElement('span');
+    s.style.left = Math.random() * 100 + '%';
+    s.style.top = Math.random() * 100 + '%';
+    s.style.animationDuration = (4 + Math.random() * 6) + 's';
+    s.style.animationDelay = (Math.random() * 6) + 's';
+    s.style.width = s.style.height = (1 + Math.random() * 2) + 'px';
+    c.appendChild(s);
+  }
+})();
+
+// ===== 正解の呪文 =====
+const SPELL = 'ルキウゲルキウゲロフォカーレ';
+
+// 正規化: カタカナ→ひらがな、スペース除去、小書き統一
+function normalize(str) {
+  return str
+    .replace(/[\s　]/g, '')
+    .replace(/[ァ-ヶ]/g, m => String.fromCharCode(m.charCodeAt(0) - 0x60))
+    .replace(/[ぁぃぅぇぉっゃゅょ]/g, m => {
+      const map = { 'ぁ':'あ','ぃ':'い','ぅ':'う','ぇ':'え','ぉ':'お','っ':'つ','ゃ':'や','ゅ':'ゆ','ょ':'よ' };
+      return map[m] || m;
+    })
+    .toLowerCase();
+}
+
+const SPELL_NORM = normalize(SPELL);
+
+function checkSpell(input) {
+  return normalize(input) === SPELL_NORM;
+}
+
+// ===== UI =====
+const spellBtn = document.getElementById('spellBtn');
+const btnWrap = document.getElementById('btnWrap');
+const status = document.getElementById('status');
+const successOverlay = document.getElementById('successOverlay');
+const retryBtn = document.getElementById('retryBtn');
+const textInput = document.getElementById('textInput');
+const textSubmit = document.getElementById('textSubmit');
+
+let recognition = null;
+let listening = false;
+
+// 音声認識
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+spellBtn.addEventListener('click', () => {
+  if (listening) { stopListening(); return; }
+
+  if (!SpeechRecognition) {
+    status.textContent = '⚠ この端末では音声認識を利用できません。テキスト入力をお使いください。';
+    status.className = 'status error';
+    return;
+  }
+
+  startListening();
+});
+
+function startListening() {
+  recognition = new SpeechRecognition();
+  recognition.lang = 'ja-JP';
+  recognition.interimResults = true;
+  recognition.continuous = false;
+
+  listening = true;
+  spellBtn.classList.add('listening');
+  btnWrap.classList.add('listening');
+  spellBtn.innerHTML = '<span class="icon">🔮</span>聴いている…';
+  status.textContent = '呪文を唱えてください…';
+  status.className = 'status';
+
+  let finalTranscript = '';
+
+  recognition.onresult = (e) => {
+    let interim = '';
+    finalTranscript = '';
+    for (let i = 0; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        finalTranscript += e.results[i][0].transcript;
+      } else {
+        interim += e.results[i][0].transcript;
+      }
+    }
+    const display = finalTranscript || interim;
+    status.textContent = '「' + display + '」';
+    status.className = 'status heard';
+  };
+
+  recognition.onend = () => {
+    stopListening();
+    if (finalTranscript && checkSpell(finalTranscript)) {
+      triggerSuccess();
+    } else if (finalTranscript) {
+      status.textContent = '呪文が違うようだ…「' + finalTranscript + '」';
+      status.className = 'status error';
+    } else {
+      status.textContent = '音声を検出できませんでした。もう一度お試しください。';
+      status.className = 'status error';
+    }
+  };
+
+  recognition.onerror = (e) => {
+    stopListening();
+    if (e.error === 'no-speech') {
+      status.textContent = '音声を検出できませんでした。もう一度お試しください。';
+    } else {
+      status.textContent = '⚠ エラー: ' + e.error;
+    }
+    status.className = 'status error';
+  };
+
+  recognition.start();
+}
+
+function stopListening() {
+  listening = false;
+  spellBtn.classList.remove('listening');
+  btnWrap.classList.remove('listening');
+  spellBtn.innerHTML = '<span class="icon">✦</span>詠唱開始';
+  if (recognition) {
+    try { recognition.abort(); } catch(e) {}
+    recognition = null;
+  }
+}
+
+// テキスト入力
+textSubmit.addEventListener('click', submitText);
+textInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitText(); });
+
+function submitText() {
+  const val = textInput.value.trim();
+  if (!val) return;
+  if (checkSpell(val)) {
+    triggerSuccess();
+  } else {
+    status.textContent = '呪文が違うようだ…';
+    status.className = 'status error';
+  }
+  textInput.value = '';
+}
+
+// リトライ
+retryBtn.addEventListener('click', () => {
+  successOverlay.classList.remove('show');
+  status.textContent = '';
+  status.className = 'status';
+});
+
+// ===== 成功演出 =====
+function triggerSuccess() {
+  // パーティクルエフェクト
+  launchMagicFx();
+  // 少し待ってからオーバーレイ
+  setTimeout(() => {
+    successOverlay.classList.add('show');
+  }, 900);
+}
+
+// ===== Canvas 魔法エフェクト =====
+const canvas = document.getElementById('fx-canvas');
+const ctx = canvas.getContext('2d');
+let particles = [];
+let animId = null;
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function launchMagicFx() {
+  particles = [];
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  // 中心から放射状
+  for (let i = 0; i < 120; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 6;
+    const hue = 220 + Math.random() * 80; // 青〜紫
+    particles.push({
+      x: cx, y: cy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      decay: 0.008 + Math.random() * 0.012,
+      size: 2 + Math.random() * 4,
+      hue: hue,
+      type: 'burst'
+    });
+  }
+
+  // 周囲から中心へ集まるパーティクル
+  for (let i = 0; i < 60; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 200 + Math.random() * 200;
+    const sx = cx + Math.cos(angle) * dist;
+    const sy = cy + Math.sin(angle) * dist;
+    particles.push({
+      x: sx, y: sy,
+      vx: (cx - sx) * 0.02,
+      vy: (cy - sy) * 0.02,
+      life: 1,
+      decay: 0.015 + Math.random() * 0.01,
+      size: 1.5 + Math.random() * 3,
+      hue: 180 + Math.random() * 60,
+      type: 'converge'
+    });
+  }
+
+  // 魔法陣の輪
+  for (let i = 0; i < 80; i++) {
+    const angle = (i / 80) * Math.PI * 2;
+    const r = 100 + Math.random() * 20;
+    particles.push({
+      x: cx + Math.cos(angle) * r,
+      y: cy + Math.sin(angle) * r,
+      vx: Math.cos(angle + Math.PI/2) * 1.5,
+      vy: Math.sin(angle + Math.PI/2) * 1.5,
+      life: 1,
+      decay: 0.01 + Math.random() * 0.005,
+      size: 1.5 + Math.random() * 2,
+      hue: 260 + Math.random() * 40,
+      type: 'ring'
+    });
+  }
+
+  if (!animId) animate();
+}
+
+function animate() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= p.decay;
+
+    if (p.type === 'burst') {
+      p.vx *= 0.98;
+      p.vy *= 0.98;
+    }
+
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+      continue;
+    }
+
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = `hsl(${p.hue}, 80%, 70%)`;
+    ctx.shadowColor = `hsl(${p.hue}, 90%, 60%)`;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+
+  if (particles.length > 0) {
+    animId = requestAnimationFrame(animate);
+  } else {
+    animId = null;
+  }
+}
+</script>
+</body>
+</html>
