@@ -109,8 +109,6 @@
     opacity: 0;
     transition: opacity .4s;
   }
-  .spell-btn.listening ~ .magic-circle,
-  .spell-btn.listening .magic-circle { /* fallback */ }
   .btn-wrap.listening .magic-circle {
     opacity: 1;
     animation: spin 4s linear infinite;
@@ -299,10 +297,12 @@
 // ===== 正解の呪文 =====
 const SPELL = 'ルキウゲルキウゲロフォカーレ';
 
-// 正規化: カタカナ→ひらがな、スペース除去、小書き統一
+// 正規化: カタカナ→ひらがな、スペース除去、小書き統一、漢字・記号除去
 function normalize(str) {
   return str
     .replace(/[\s　]/g, '')
+    // 漢字・記号・句読点を除去（ひらがな・カタカナ・長音符のみ残す）
+    .replace(/[^぀-ゟ゠-ヿー]/g, '')
     .replace(/[ァ-ヶ]/g, m => String.fromCharCode(m.charCodeAt(0) - 0x60))
     .replace(/[ぁぃぅぇぉっゃゅょ]/g, m => {
       const map = { 'ぁ':'あ','ぃ':'い','ぅ':'う','ぇ':'え','ぉ':'お','っ':'つ','ゃ':'や','ゅ':'ゆ','ょ':'よ' };
@@ -311,10 +311,52 @@ function normalize(str) {
     .toLowerCase();
 }
 
+// レーベンシュタイン距離（編集距離）
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({length: m + 1}, () => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = Math.min(
+        dp[i-1][j] + 1,
+        dp[i][j-1] + 1,
+        dp[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1)
+      );
+    }
+  }
+  return dp[m][n];
+}
+
+// 音の類似グループ（混同しやすい音を同一視）
+function phonNormalize(str) {
+  return str
+    .replace(/[おう]$/g, 'お')  // 語末の長音
+    .replace(/ー/g, '')          // 長音符除去
+    .replace(/[づず]/g, 'ず')
+    .replace(/[ぢじ]/g, 'じ')
+    .replace(/[をお]/g, 'お')
+    .replace(/[はわ]/g, 'わ')    // 助詞的混同
+    .replace(/ふぉ/g, 'ほ')      // フォ→ホ混同対策
+    .replace(/う゛/g, 'ぶ');
+}
+
 const SPELL_NORM = normalize(SPELL);
+const SPELL_PHON = phonNormalize(SPELL_NORM);
+const THRESHOLD = 0.55; // 類似度55%以上でOK
 
 function checkSpell(input) {
-  return normalize(input) === SPELL_NORM;
+  const inputNorm = normalize(input);
+  // 完全一致
+  if (inputNorm === SPELL_NORM) return true;
+  // 音韻正規化後の編集距離で類似度判定
+  const inputPhon = phonNormalize(inputNorm);
+  const maxLen = Math.max(SPELL_PHON.length, inputPhon.length);
+  if (maxLen === 0) return false;
+  const dist = levenshtein(SPELL_PHON, inputPhon);
+  const similarity = 1 - dist / maxLen;
+  return similarity >= THRESHOLD;
 }
 
 // ===== UI =====
@@ -466,7 +508,7 @@ function launchMagicFx() {
   for (let i = 0; i < 120; i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = 2 + Math.random() * 6;
-    const hue = 220 + Math.random() * 80; // 青〜紫
+    const hue = 220 + Math.random() * 80;
     particles.push({
       x: cx, y: cy,
       vx: Math.cos(angle) * speed,
